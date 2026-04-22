@@ -1,0 +1,1443 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>作業分析ツール</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #f4f3ee;
+  --surface: #ffffff;
+  --surface2: #f0efe9;
+  --border: rgba(0,0,0,0.10);
+  --border2: rgba(0,0,0,0.18);
+  --text: #1a1a18;
+  --text2: #6b6b67;
+  --text3: #a0a09c;
+  --blue: #185FA5;
+  --blue-l: #E6F1FB;
+  --blue-d: #0C447C;
+  --green: #3B6D11;
+  --green-l: #EAF3DE;
+  --red: #C84040;
+  --red-l: #FCEBEB;
+  --amber: #854F0B;
+  --amber-l: #FAEEDA;
+  --r-md: 8px;
+  --r-lg: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141412;
+    --surface: #1e1e1c;
+    --surface2: #2a2a27;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.16);
+    --text: #e8e8e4;
+    --text2: #9a9a95;
+    --text3: #6a6a66;
+    --blue: #378ADD;
+    --blue-l: #0c1e2e;
+    --blue-d: #85B7EB;
+    --green: #97C459;
+    --green-l: #173404;
+    --red: #E06060;
+    --red-l: #2a1010;
+    --amber: #EF9F27;
+    --amber-l: #412402;
+  }
+}
+
+body {
+  font-family: 'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic UI',sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 14px;
+}
+
+/* ===== LAYOUT ===== */
+.layout { display: flex; gap: 0; height: 100vh; padding: 10px; }
+.left-col { flex: 1; min-width: 200px; max-width: 70vw; display: flex; flex-direction: column; gap: 10px; }
+.mid-col  { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+.right-col { width: 300px; flex-shrink: 0; margin-left: 10px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+.video-card { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.video-card .video-wrap { flex: 1; min-height: 0; }
+
+/* ===== CARD ===== */
+.card {
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
+}
+.card-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text3);
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+}
+
+/* ===== VIDEO AREA ===== */
+.video-card { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.video-wrap {
+  flex: 1;
+  background: #000;
+  border-radius: var(--r-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  min-height: 300px;
+}
+#video-el {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: none;
+}
+.video-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: #666;
+}
+.upload-icon { font-size: 40px; }
+.drop-hint { font-size: 13px; }
+
+/* ===== CONTROLS ===== */
+.controls { display: flex; gap: 6px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+.btn {
+  border: 0.5px solid var(--border2);
+  border-radius: var(--r-md);
+  padding: 7px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-weight: 500;
+  transition: background 0.12s;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--surface2); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+.btn.primary:hover { background: var(--blue-d); border-color: var(--blue-d); }
+.btn.danger { background: var(--red-l); color: var(--red); border-color: var(--red); }
+.btn.success { background: var(--green-l); color: var(--green); border-color: var(--green); }
+.btn.record-btn { background: var(--red); color: #fff; border-color: var(--red); font-size: 14px; padding: 8px 22px; }
+.btn.record-btn:hover { background: #a83030; }
+
+.time-display {
+  font-size: 28px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  min-width: 130px;
+}
+.speed-group { display: flex; gap: 4px; align-items: center; }
+.speed-group label { font-size: 12px; color: var(--text2); }
+.speed-btn {
+  border: 0.5px solid var(--border2);
+  border-radius: 6px;
+  padding: 4px 9px;
+  font-size: 12px;
+  cursor: pointer;
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.speed-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+.speed-btn:hover:not(.active) { background: var(--surface2); }
+
+/* ===== RECORD INPUT ===== */
+.record-input-row {
+  display: flex; gap: 8px; align-items: center; margin-top: 10px;
+}
+.record-input-row input[type=text] {
+  flex: 1;
+  border: 0.5px solid var(--border2);
+  border-radius: var(--r-md);
+  padding: 7px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--surface);
+  outline: none;
+}
+.record-input-row input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(56,138,221,0.15); }
+.record-hint { font-size: 11px; color: var(--text3); margin-top: 5px; }
+
+/* ===== SESSION INFO ===== */
+.session-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.session-row input[type=text] {
+  flex: 1;
+  border: 0.5px solid var(--border2);
+  border-radius: var(--r-md);
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--surface);
+  outline: none;
+}
+.session-row input:focus { border-color: var(--blue); }
+.badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.badge.blue { background: var(--blue-l); color: var(--blue-d); }
+.badge.green { background: var(--green-l); color: var(--green); }
+.badge.amber { background: var(--amber-l); color: var(--amber); }
+
+/* ===== RECORDS TABLE ===== */
+.records-wrap { max-height: 350px; overflow-y: auto; border: 0.5px solid var(--border); border-radius: var(--r-md); }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th {
+  background: var(--surface2);
+  padding: 6px 8px;
+  text-align: left;
+  font-weight: 500;
+  color: var(--text2);
+  position: sticky;
+  top: 0;
+  border-bottom: 0.5px solid var(--border);
+}
+td { padding: 5px 8px; border-bottom: 0.5px solid var(--border); vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--surface2); }
+.td-del { text-align: center; }
+.del-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--text3); font-size: 13px; padding: 0 4px;
+}
+.del-btn:hover { color: var(--red); }
+.empty-row td { text-align: center; color: var(--text3); padding: 20px; }
+
+/* ===== ANALYSIS ===== */
+.analysis-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+.tab-btn {
+  border: 0.5px solid var(--border2);
+  border-radius: var(--r-md);
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  background: var(--surface);
+  color: var(--text2);
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.tab-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+.tab-btn:hover:not(.active) { background: var(--surface2); }
+
+.chart-wrap { position: relative; height: 220px; }
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stat-card {
+  background: var(--surface2);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+}
+.stat-label { font-size: 11px; color: var(--text2); margin-bottom: 3px; }
+.stat-val { font-size: 20px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.stat-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+.compare-table-wrap { max-height: 250px; overflow-y: auto; }
+.no-data { text-align: center; color: var(--text3); padding: 30px; font-size: 13px; }
+
+/* ===== SESSIONS LIST ===== */
+.session-list { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; }
+.session-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px;
+  border: 0.5px solid var(--border);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.session-item:hover { background: var(--surface2); }
+.session-item.active { border-color: var(--blue); background: var(--blue-l); }
+.session-name { flex: 1; font-size: 13px; font-weight: 500; }
+.session-meta { font-size: 11px; color: var(--text3); }
+.session-del { background: none; border: none; cursor: pointer; color: var(--text3); font-size: 13px; padding: 0 2px; }
+.session-del:hover { color: var(--red); }
+
+/* ===== EXPORT ===== */
+.export-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+/* ===== FILE DROP ===== */
+.video-wrap.dragover { outline: 2px dashed var(--blue); }
+
+/* ===== RECORD ROW STATES ===== */
+tr.row-active td { background: var(--blue-l) !important; }
+tr.row-active td:first-child { border-left: 3px solid var(--blue); }
+
+/* ===== ROW SEEK ===== */
+#records-tbody tr { cursor: pointer; }
+#records-tbody tr:hover td { background: var(--blue-l); }
+tr.row-active td { background: var(--blue-l) !important; }
+
+/* ===== RESIZER (縦長モード・左右) ===== */
+.resizer {
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+  flex-shrink: 0;
+  z-index: 10;
+  transition: background 0.15s;
+}
+.resizer::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 40px;
+  border-radius: 2px;
+  background: var(--border2);
+  transition: background 0.15s, height 0.15s;
+}
+.resizer:hover::after,
+.resizer.dragging::after {
+  background: var(--blue);
+  height: 60px;
+}
+.resizer.dragging { background: rgba(56,138,221,0.06); }
+
+/* ===== RESIZER (横長モード・左右) ===== */
+.ls-col-resizer {
+  width: 6px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+  z-index: 10;
+  transition: background 0.15s;
+  align-self: stretch;
+}
+.ls-col-resizer::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 40px;
+  border-radius: 2px;
+  background: var(--border2);
+  transition: background 0.15s, height 0.15s;
+}
+.ls-col-resizer:hover::after,
+.ls-col-resizer.dragging::after { background: var(--blue); height: 60px; }
+.ls-col-resizer.dragging { background: rgba(56,138,221,0.06); }
+
+/* ===== RESIZER (横長モード・上下) ===== */
+.ls-row-resizer {
+  height: 6px;
+  flex-shrink: 0;
+  cursor: row-resize;
+  background: transparent;
+  position: relative;
+  z-index: 10;
+  transition: background 0.15s;
+  align-self: stretch;
+}
+.ls-row-resizer::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  height: 2px;
+  width: 40px;
+  border-radius: 2px;
+  background: var(--border2);
+  transition: background 0.15s, width 0.15s;
+}
+.ls-row-resizer:hover::after,
+.ls-row-resizer.dragging::after { background: var(--blue); width: 60px; }
+.ls-row-resizer.dragging { background: rgba(56,138,221,0.06); }
+.play-range-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--text3); font-size: 12px; padding: 0 2px;
+  transition: color 0.12s;
+}
+.play-range-btn:hover { color: var(--blue); }
+.play-range-btn.playing { color: var(--blue); }
+
+/* ===== LAYOUT SWITCHER ===== */
+.layout-switcher {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.layout-switcher-label {
+  font-size: 11px;
+  color: var(--text3);
+  white-space: nowrap;
+}
+.layout-thumb {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border2);
+  cursor: pointer;
+  background: var(--surface);
+  transition: border-color 0.15s, background 0.15s;
+}
+.layout-thumb:hover { border-color: var(--blue); background: var(--blue-l); }
+.layout-thumb.active { border-color: var(--blue); background: var(--blue-l); }
+.layout-thumb-label {
+  font-size: 10px;
+  color: var(--text3);
+  text-align: center;
+  margin-top: 2px;
+}
+.layout-thumb.active .layout-thumb-label { color: var(--blue); }
+
+/* 縦長アイコン */
+.lt-portrait { display: flex; gap: 2px; height: 28px; }
+.lt-p-left  { width: 10px; background: var(--border2); border-radius: 2px; }
+.lt-p-mid   { width: 16px; background: var(--border2); border-radius: 2px; }
+.lt-p-right { width: 10px; background: var(--border2); border-radius: 2px; }
+.layout-thumb.active .lt-p-left,
+.layout-thumb.active .lt-p-mid,
+.layout-thumb.active .lt-p-right { background: var(--blue); opacity: 0.6; }
+
+/* 横長アイコン */
+.lt-landscape { display: flex; flex-direction: column; gap: 2px; width: 36px; }
+.lt-l-top { display: flex; gap: 2px; height: 14px; }
+.lt-l-top-left  { flex: 2; background: var(--border2); border-radius: 2px; }
+.lt-l-top-right { flex: 1; background: var(--border2); border-radius: 2px; }
+.lt-l-bot { display: flex; gap: 2px; height: 10px; }
+.lt-l-bot div { flex: 1; background: var(--border2); border-radius: 2px; }
+.layout-thumb.active .lt-l-top-left,
+.layout-thumb.active .lt-l-top-right,
+.layout-thumb.active .lt-l-bot div { background: var(--blue); opacity: 0.6; }
+
+/* ===== LANDSCAPE LAYOUT ===== */
+body.landscape .layout {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  grid-template-columns: 1fr 320px;
+  gap: 10px;
+  height: 100vh;
+  padding: 10px;
+}
+body.landscape .layout-top {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  grid-column: 1 / 2;
+  gap: 10px;
+  min-height: 0;
+}
+body.landscape .layout-bottom {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-column: 1 / 3;
+  gap: 10px;
+  align-items: start;
+}
+body.landscape .right-col-landscape {
+  grid-column: 2 / 3;
+  grid-row: 1 / 2;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  min-height: 0;
+}
+/* 横長モード: リサイザー非表示 */
+body.landscape #col-resizer { display: none; }
+/* 横長モード: 動画カードを縦いっぱいに */
+body.landscape .video-card { height: 100%; display: flex; flex-direction: column; }
+body.landscape .video-wrap { flex: 1; }
+body.landscape #video-el { width: 100%; height: 100%; object-fit: contain; }
+.seekbar-wrap { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.seekbar {
+  width: 100%;
+  -webkit-appearance: none; appearance: none;
+  height: 5px; border-radius: 3px;
+  background: var(--border2);
+  outline: none; cursor: pointer;
+  background-image: linear-gradient(var(--blue), var(--blue));
+  background-size: 0% 100%; background-repeat: no-repeat;
+  transition: height 0.1s;
+}
+.seekbar:hover { height: 7px; }
+.seekbar::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--blue); cursor: pointer;
+  border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--blue);
+  transition: transform 0.1s;
+}
+.seekbar:hover::-webkit-slider-thumb { transform: scale(1.2); }
+.seekbar::-moz-range-thumb {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--blue); cursor: pointer;
+  border: 2px solid var(--surface);
+}
+.frame-btns { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.frame-btn {
+  background: var(--surface); border: 0.5px solid var(--border2);
+  border-radius: 6px; padding: 4px 9px; font-size: 13px;
+  cursor: pointer; color: var(--text); line-height: 1;
+  transition: background 0.1s; user-select: none; font-family: inherit;
+}
+.frame-btn:hover { background: var(--surface2); }
+.frame-btn:active { background: var(--blue-l); color: var(--blue); }
+.frame-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.frame-step-label { font-size: 11px; color: var(--text3); white-space: nowrap; }
+.frame-step-select {
+  border: 0.5px solid var(--border2); border-radius: 6px;
+  padding: 3px 6px; font-size: 11px;
+  background: var(--surface); color: var(--text);
+  cursor: pointer; font-family: inherit; outline: none;
+}
+</style>
+</head>
+<body>
+
+<div class="layout" id="main-layout">
+
+  <!-- LEFT COL: 動画 -->
+  <div class="left-col" id="left-col">
+    <div class="card video-card">
+      <div class="card-title">動画</div>
+      <div class="video-wrap" id="video-wrap">
+        <div class="video-placeholder" id="placeholder">
+          <div class="upload-icon">🎬</div>
+          <div class="drop-hint">動画ファイルをドロップ</div>
+        </div>
+        <video id="video-el" preload="metadata"></video>
+      </div>
+      <div class="controls">
+        <button class="btn primary" style="font-size:12px;padding:6px 10px;" onclick="document.getElementById('file-in').click()">動画を開く</button>
+        <input type="file" id="file-in" accept="video/*" style="display:none" onchange="loadVideo(this)">
+        <button class="btn" id="btn-play" onclick="togglePlay()" disabled style="font-size:12px;padding:6px 10px;">▶ 再生</button>
+        <div class="time-display" id="time-disp" style="font-size:20px;min-width:90px;">00:00.0</div>
+      </div>
+      <div class="controls" id="controls-speed" style="margin-top:4px;">
+        <div class="speed-group">
+          <label>速度</label>
+          <button class="speed-btn active" onclick="setSpeed(0.25,this)">×0.25</button>
+          <button class="speed-btn" onclick="setSpeed(0.5,this)">×0.5</button>
+          <button class="speed-btn" onclick="setSpeed(1,this)">×1</button>
+          <button class="speed-btn" onclick="setSpeed(2,this)">×2</button>
+        </div>
+      </div>
+      <div class="seekbar-wrap">
+        <input type="range" class="seekbar" id="seekbar" min="0" max="1000" value="0" step="1" disabled>
+        <div class="frame-btns">
+          <button class="frame-btn" id="btn-frame-back" onclick="stepFrame(-1)" disabled title="1コマ戻る（←キー）">◀◀</button>
+          <button class="frame-btn" id="btn-frame-fwd"  onclick="stepFrame(1)"  disabled title="1コマ進む（→キー）">▶▶</button>
+          <span class="frame-step-label">ステップ</span>
+          <select class="frame-step-select" id="frame-step-sel">
+            <option value="0.033">1/30s</option>
+            <option value="0.04">1/25s</option>
+            <option value="0.1" selected>0.1s</option>
+            <option value="0.5">0.5s</option>
+            <option value="1">1s</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="resizer" id="col-resizer" title="ドラッグしてサイズ変更"></div>
+
+  <!-- MID COL: 記録 -->
+  <div class="mid-col" id="mid-col">
+    <div class="card">
+      <div class="card-title">要素作業の記録</div>
+      <div class="session-row">
+        <input type="text" id="session-name" placeholder="観測名（例：観測1、Aライン 午前）" value="観測1">
+        <span class="badge blue" id="rec-count-badge">0件</span>
+      </div>
+      <div class="record-input-row">
+        <input type="text" id="elem-input" placeholder="要素作業名を入力..." onkeydown="if(event.key==='Enter')recordNow()">
+        <button class="btn record-btn" id="btn-record" onclick="recordNow()" disabled>● 記録</button>
+      </div>
+      <div class="record-hint">動画再生中にEnterキーまたは「記録」ボタンで現在時刻を記録します</div>
+    </div>
+    <div class="card" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+        <div class="card-title" style="margin-bottom:0;">記録一覧</div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn success" onclick="saveSession()" id="btn-save">観測を保存</button>
+          <button class="btn danger" onclick="clearRecords()">記録クリア</button>
+        </div>
+      </div>
+      <div class="records-wrap" style="flex:1;">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:30px;">#</th>
+              <th>要素作業</th>
+              <th style="width:70px;">開始</th>
+              <th style="width:70px;">終了</th>
+              <th style="width:60px;">時間(s)</th>
+              <th style="width:50px;"></th>
+            </tr>
+          </thead>
+          <tbody id="records-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT COL: 分析 -->
+  <div class="right-col" id="right-col">
+    <div class="card">
+      <div class="card-title">保存済み観測</div>
+      <div class="session-list" id="session-list">
+        <div class="no-data">観測を保存するとここに表示されます</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">分析</div>
+      <div class="analysis-tabs">
+        <button class="tab-btn active" onclick="switchTab('chart',this)">グラフ</button>
+        <button class="tab-btn" onclick="switchTab('stats',this)">統計</button>
+        <button class="tab-btn" onclick="switchTab('compare',this)">比較</button>
+      </div>
+      <div id="tab-chart">
+        <div class="chart-wrap"><canvas id="pie-chart"></canvas></div>
+      </div>
+      <div id="tab-stats" style="display:none;">
+        <div class="stat-grid" id="stat-grid">
+          <div class="no-data" style="grid-column:1/-1;">観測を選択してください</div>
+        </div>
+      </div>
+      <div id="tab-compare" style="display:none;">
+        <div class="compare-table-wrap">
+          <div id="compare-content" class="no-data">複数の観測を保存すると比較できます</div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">エクスポート</div>
+      <div class="export-row" style="flex-direction:column;">
+        <button class="btn primary" onclick="exportExcel()">📊 Excelに出力</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="margin-bottom:8px;">レイアウト</div>
+      <div class="layout-switcher">
+        <div class="layout-thumb active" id="thumb-portrait" onclick="setLayout('portrait')" title="縦長動画向け">
+          <div class="lt-portrait">
+            <div class="lt-p-left"></div>
+            <div class="lt-p-mid"></div>
+            <div class="lt-p-right"></div>
+          </div>
+          <div class="layout-thumb-label">縦長</div>
+        </div>
+        <div class="layout-thumb" id="thumb-landscape" onclick="setLayout('landscape')" title="横長動画向け">
+          <div class="lt-landscape">
+            <div class="lt-l-top">
+              <div class="lt-l-top-left"></div>
+              <div class="lt-l-top-right"></div>
+            </div>
+            <div class="lt-l-bot">
+              <div></div><div></div><div></div>
+            </div>
+          </div>
+          <div class="layout-thumb-label">横長</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main-layout -->
+
+<script>
+// ===== STATE =====
+let sessions = [];
+let currentRecords = [];   // {elem, start, end, dur}
+let lastStampTime = null;  // 直前の記録時刻
+let activeSessionIdx = null;
+let pieChart = null;
+let currentTab = 'chart';
+
+// ===== VIDEO =====
+const video = document.getElementById('video-el');
+
+function loadVideo(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  video.src = url;
+  video.style.display = 'block';
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('btn-play').disabled = false;
+  document.getElementById('btn-record').disabled = false;
+  document.getElementById('seekbar').disabled = false;
+  document.getElementById('btn-frame-back').disabled = false;
+  document.getElementById('btn-frame-fwd').disabled = false;
+  video.playbackRate = currentSpeed;
+  video.addEventListener('timeupdate', updateTimeDisplay);
+  video.addEventListener('loadedmetadata', () => {
+    const sb = document.getElementById('seekbar');
+    sb.max = Math.floor(video.duration * 100);
+    updateSeekbar();
+  });
+}
+
+// drag & drop
+const vwrap = document.getElementById('video-wrap');
+vwrap.addEventListener('dragover', e => { e.preventDefault(); vwrap.classList.add('dragover'); });
+vwrap.addEventListener('dragleave', () => vwrap.classList.remove('dragover'));
+vwrap.addEventListener('drop', e => {
+  e.preventDefault(); vwrap.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('video/')) {
+    const dt = new DataTransfer(); dt.items.add(file);
+    const fi = document.getElementById('file-in'); fi.files = dt.files;
+    loadVideo(fi);
+  }
+});
+
+let currentSpeed = 0.25;
+function setSpeed(s, btn) {
+  currentSpeed = s;
+  video.playbackRate = s;
+  document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function togglePlay() {
+  if (video.paused) {
+    video.play();
+    document.getElementById('btn-play').textContent = '⏸ 一時停止';
+  } else {
+    video.pause();
+    document.getElementById('btn-play').textContent = '▶ 再生';
+    if (rangePlayIdx !== null) stopRangePlay();
+  }
+}
+
+function updateTimeDisplay() {
+  document.getElementById('time-disp').textContent = fmtTime(video.currentTime);
+  updateSeekbar();
+}
+
+function updateSeekbar() {
+  if (!video.duration) return;
+  const sb = document.getElementById('seekbar');
+  const pct = video.currentTime / video.duration;
+  sb.value = Math.round(pct * sb.max);
+  sb.style.backgroundSize = (pct * 100) + '% 100%';
+}
+
+// シークバー操作
+(function() {
+  const sb = document.getElementById('seekbar');
+  let isSeeking = false;
+  sb.addEventListener('mousedown', () => { isSeeking = true; });
+  sb.addEventListener('input', () => {
+    if (!video.duration) return;
+    video.currentTime = (sb.value / sb.max) * video.duration;
+    sb.style.backgroundSize = (sb.value / sb.max * 100) + '% 100%';
+    document.getElementById('time-disp').textContent = fmtTime(video.currentTime);
+  });
+  sb.addEventListener('mouseup', () => { isSeeking = false; });
+  // touch対応
+  sb.addEventListener('touchmove', () => {
+    if (!video.duration) return;
+    video.currentTime = (sb.value / sb.max) * video.duration;
+    sb.style.backgroundSize = (sb.value / sb.max * 100) + '% 100%';
+  });
+})();
+
+function stepFrame(dir) {
+  if (!video.duration) return;
+  const step = parseFloat(document.getElementById('frame-step-sel').value);
+  video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + dir * step));
+}
+
+function fmtTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  const d = Math.floor((sec % 1) * 10);
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${d}`;
+}
+
+function fmtSec(sec) {
+  return Math.round(sec * 10) / 10;
+}
+
+// ===== RECORD =====
+function recordNow() {
+  const elem = document.getElementById('elem-input').value.trim();
+  if (!elem) { document.getElementById('elem-input').focus(); return; }
+
+  const now = video.currentTime;
+
+  // 直前の記録があれば終了時刻を確定
+  if (lastStampTime !== null && currentRecords.length > 0) {
+    const last = currentRecords[currentRecords.length - 1];
+    if (last.end === null) {
+      last.end = now;
+      last.dur = fmtSec(now - last.start);
+    }
+  }
+
+  // 新規記録
+  currentRecords.push({ elem, start: now, end: null, dur: null });
+  lastStampTime = now;
+
+  renderRecords();
+  document.getElementById('elem-input').value = '';
+  document.getElementById('elem-input').focus();
+}
+
+function finalizeLastRecord() {
+  if (currentRecords.length > 0) {
+    const last = currentRecords[currentRecords.length - 1];
+    if (last.end === null && video.duration) {
+      last.end = video.currentTime;
+      last.dur = fmtSec(last.end - last.start);
+    }
+  }
+}
+
+function deleteRecord(idx) {
+  // 削除前に「一つ前の要素」の開始時刻を取得
+  const prevStart = idx > 0 ? currentRecords[idx - 1].start : (idx < currentRecords.length - 1 ? currentRecords[idx + 1].start : null);
+
+  currentRecords.splice(idx, 1);
+  // 前後をつなぎ直す
+  for (let i = 0; i < currentRecords.length; i++) {
+    if (i > 0) {
+      currentRecords[i-1].end = currentRecords[i].start;
+      currentRecords[i-1].dur = fmtSec(currentRecords[i].start - currentRecords[i-1].start);
+    }
+  }
+  if (currentRecords.length > 0) {
+    const last = currentRecords[currentRecords.length-1];
+    if (last.end === null) last.dur = null;
+  }
+
+  // 動画を一つ前の要素の開始位置に戻す
+  if (prevStart !== null && !isNaN(prevStart)) {
+    video.currentTime = prevStart;
+  }
+
+  stopRangePlay();
+  renderRecords();
+}
+
+function clearRecords() {
+  if (currentRecords.length > 0 && !confirm('記録をクリアしますか？')) return;
+  currentRecords = [];
+  lastStampTime = null;
+  stopRangePlay();
+  renderRecords();
+}
+
+// ===== RANGE PLAY =====
+let rangePlayIdx = null;
+let rangeEndTime = null;
+
+function stopRangePlay() {
+  rangePlayIdx = null;
+  rangeEndTime = null;
+  // ボタンのアイコンをリセット
+  document.querySelectorAll('.play-range-btn').forEach(b => {
+    b.textContent = '▷';
+    b.classList.remove('playing');
+  });
+  document.querySelectorAll('#records-tbody tr').forEach(r => r.classList.remove('row-active'));
+}
+
+function playRange(idx) {
+  const r = currentRecords[idx];
+  if (!r || r.end === null) return;
+
+  // すでに再生中の同じ行なら停止
+  if (rangePlayIdx === idx) {
+    video.pause();
+    stopRangePlay();
+    document.getElementById('btn-play').textContent = '▶ 再生';
+    return;
+  }
+
+  stopRangePlay();
+  rangePlayIdx = idx;
+  rangeEndTime = r.end;
+
+  video.currentTime = r.start;
+  video.play();
+  document.getElementById('btn-play').textContent = '⏸ 一時停止';
+
+  // 該当行をハイライト
+  const rows = document.querySelectorAll('#records-tbody tr');
+  if (rows[idx]) {
+    rows[idx].classList.add('row-active');
+    const btn = rows[idx].querySelector('.play-range-btn');
+    if (btn) { btn.textContent = '⏹'; btn.classList.add('playing'); }
+  }
+}
+
+// timeupdate で終端チェック
+video.addEventListener('timeupdate', () => {
+  if (rangePlayIdx !== null && rangeEndTime !== null) {
+    if (video.currentTime >= rangeEndTime) {
+      video.pause();
+      video.currentTime = rangeEndTime;
+      document.getElementById('btn-play').textContent = '▶ 再生';
+      stopRangePlay();
+    }
+  }
+});
+
+function renderRecords() {
+  const tbody = document.getElementById('records-tbody');
+  document.getElementById('rec-count-badge').textContent = currentRecords.length + '件';
+  if (currentRecords.length === 0) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="6">まだ記録がありません</td></tr>';
+    return;
+  }
+  tbody.innerHTML = currentRecords.map((r, i) => `
+    <tr>
+      <td style="color:var(--text3)">${i+1}</td>
+      <td><strong>${escH(r.elem)}</strong></td>
+      <td style="font-variant-numeric:tabular-nums;font-size:11px;">${fmtTime(r.start)}</td>
+      <td style="font-variant-numeric:tabular-nums;font-size:11px;">${r.end !== null ? fmtTime(r.end) : '—'}</td>
+      <td style="font-variant-numeric:tabular-nums;">${r.dur !== null ? r.dur + 's' : '—'}</td>
+      <td class="td-del" style="white-space:nowrap;">
+        ${r.end !== null ? `<button class="play-range-btn" title="この区間を再生" onclick="playRange(${i})">▷</button>` : ''}
+        <button class="del-btn" onclick="deleteRecord(${i})">✕</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// ===== SESSIONS =====
+function saveSession() {
+  finalizeLastRecord();
+  const name = document.getElementById('session-name').value.trim() || ('観測' + (sessions.length + 1));
+  if (currentRecords.length === 0) { alert('記録がありません'); return; }
+  const session = {
+    id: Date.now(),
+    name,
+    date: new Date().toLocaleDateString('ja-JP'),
+    records: JSON.parse(JSON.stringify(currentRecords))
+  };
+  sessions.push(session);
+  currentRecords = [];
+  lastStampTime = null;
+  renderRecords();
+  renderSessionList();
+  updateAnalysis();
+  // 次の観測名をインクリメント
+  const m = name.match(/(\d+)$/);
+  document.getElementById('session-name').value = m
+    ? name.replace(/\d+$/, String(parseInt(m[1]) + 1))
+    : name + '2';
+}
+
+function loadSession(idx) {
+  activeSessionIdx = idx;
+  updateAnalysis();
+  renderSessionList();
+}
+
+function deleteSession(idx) {
+  if (!confirm(`「${sessions[idx].name}」を削除しますか？`)) return;
+  sessions.splice(idx, 1);
+  if (activeSessionIdx === idx) activeSessionIdx = sessions.length > 0 ? 0 : null;
+  else if (activeSessionIdx > idx) activeSessionIdx--;
+  renderSessionList();
+  updateAnalysis();
+}
+
+function renderSessionList() {
+  const el = document.getElementById('session-list');
+  if (sessions.length === 0) {
+    el.innerHTML = '<div class="no-data">観測を保存するとここに表示されます</div>';
+    return;
+  }
+  el.innerHTML = sessions.map((s, i) => `
+    <div class="session-item${activeSessionIdx === i ? ' active' : ''}" onclick="loadSession(${i})">
+      <div>
+        <div class="session-name">${escH(s.name)}</div>
+        <div class="session-meta">${s.date} ・ ${s.records.length}件</div>
+      </div>
+      <button class="session-del" onclick="event.stopPropagation();deleteSession(${i})">✕</button>
+    </div>
+  `).join('');
+}
+
+// ===== ANALYSIS =====
+function switchTab(tab, btn) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  ['chart','stats','compare'].forEach(t => {
+    document.getElementById('tab-' + t).style.display = t === tab ? '' : 'none';
+  });
+  updateAnalysis();
+}
+
+function updateAnalysis() {
+  if (currentTab === 'chart') renderPie();
+  if (currentTab === 'stats') renderStats();
+  if (currentTab === 'compare') renderCompare();
+}
+
+function getActiveRecords() {
+  if (activeSessionIdx !== null && sessions[activeSessionIdx]) {
+    return sessions[activeSessionIdx].records.filter(r => r.dur !== null);
+  }
+  return currentRecords.filter(r => r.dur !== null);
+}
+
+function aggregateByElem(records) {
+  const map = {};
+  records.forEach(r => {
+    if (!map[r.elem]) map[r.elem] = 0;
+    map[r.elem] += r.dur;
+  });
+  return map;
+}
+
+const CHART_COLORS = [
+  '#378ADD','#639922','#EF9F27','#D4537E',
+  '#1D9E75','#BA7517','#533AB7','#D85A30',
+];
+
+function renderPie() {
+  const records = getActiveRecords();
+  const ctx = document.getElementById('pie-chart').getContext('2d');
+  if (pieChart) { pieChart.destroy(); pieChart = null; }
+  if (records.length === 0) return;
+  const agg = aggregateByElem(records);
+  const labels = Object.keys(agg);
+  const data = labels.map(k => Math.round(agg[k] * 10) / 10);
+  pieChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{ data, backgroundColor: CHART_COLORS.slice(0, labels.length), borderWidth: 1 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { font: { size: 11 }, color: getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#333', boxWidth: 14 } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed}s (${Math.round(ctx.parsed / data.reduce((a,b)=>a+b,0)*1000)/10}%)` } }
+      }
+    }
+  });
+}
+
+function renderStats() {
+  const records = getActiveRecords();
+  const grid = document.getElementById('stat-grid');
+  if (records.length === 0) {
+    grid.innerHTML = '<div class="no-data" style="grid-column:1/-1;">観測を選択してください</div>';
+    return;
+  }
+  const total = Math.round(records.reduce((s, r) => s + r.dur, 0) * 10) / 10;
+  const count = records.length;
+  const avg = Math.round(total / count * 10) / 10;
+  const max = Math.max(...records.map(r => r.dur));
+  const maxElem = records.find(r => r.dur === max)?.elem || '';
+  const min = Math.min(...records.map(r => r.dur));
+
+  grid.innerHTML = `
+    <div class="stat-card"><div class="stat-label">合計時間</div><div class="stat-val">${total}s</div></div>
+    <div class="stat-card"><div class="stat-label">要素数</div><div class="stat-val">${count}</div></div>
+    <div class="stat-card"><div class="stat-label">平均時間</div><div class="stat-val">${avg}s</div></div>
+    <div class="stat-card"><div class="stat-label">最長要素</div><div class="stat-val" style="font-size:14px;">${escH(maxElem)}</div><div class="stat-sub">${max}s</div></div>
+  `;
+}
+
+function renderCompare() {
+  const el = document.getElementById('compare-content');
+  if (sessions.length < 1) {
+    el.innerHTML = '<div class="no-data">複数の観測を保存すると比較できます</div>';
+    return;
+  }
+  // 全観測の要素作業を収集
+  const allElems = [...new Set(sessions.flatMap(s => s.records.map(r => r.elem)))].sort();
+  if (allElems.length === 0) { el.innerHTML = '<div class="no-data">データがありません</div>'; return; }
+
+  let html = `<table><thead><tr><th>要素作業</th>`;
+  sessions.forEach(s => { html += `<th style="white-space:nowrap;">${escH(s.name)}</th>`; });
+  html += `</tr></thead><tbody>`;
+
+  allElems.forEach(elem => {
+    html += `<tr><td><strong>${escH(elem)}</strong></td>`;
+    sessions.forEach(s => {
+      const recs = s.records.filter(r => r.elem === elem && r.dur !== null);
+      if (recs.length === 0) { html += `<td style="color:var(--text3)">—</td>`; return; }
+      const total = recs.reduce((a, r) => a + r.dur, 0);
+      const avg = Math.round(total / recs.length * 10) / 10;
+      html += `<td>${avg}s${recs.length > 1 ? `<span style="font-size:10px;color:var(--text3);"> ×${recs.length}</span>` : ''}</td>`;
+    });
+    html += `</tr>`;
+  });
+
+  // 合計行
+  html += `<tr style="font-weight:500;background:var(--surface2)"><td>合計</td>`;
+  sessions.forEach(s => {
+    const total = Math.round(s.records.filter(r => r.dur !== null).reduce((a,r) => a + r.dur, 0) * 10) / 10;
+    html += `<td>${total}s</td>`;
+  });
+  html += `</tr></tbody></table>`;
+  el.innerHTML = html;
+}
+
+// ===== EXCEL EXPORT =====
+function exportExcel() {
+  if (sessions.length === 0 && currentRecords.filter(r=>r.dur!==null).length === 0) {
+    alert('エクスポートするデータがありません');
+    return;
+  }
+  const wb = XLSX.utils.book_new();
+
+  // シート1: 全記録（生データ）
+  const rawData = [['観測名', '日付', '#', '要素作業', '開始(s)', '終了(s)', '時間(s)']];
+  sessions.forEach(s => {
+    s.records.forEach((r, i) => {
+      rawData.push([s.name, s.date, i+1, r.elem, r.start, r.end ?? '', r.dur ?? '']);
+    });
+  });
+  if (currentRecords.length > 0) {
+    currentRecords.filter(r=>r.dur!==null).forEach((r,i) => {
+      rawData.push(['（現在の記録）', new Date().toLocaleDateString('ja-JP'), i+1, r.elem, r.start, r.end??'', r.dur??'']);
+    });
+  }
+  const ws1 = XLSX.utils.aoa_to_sheet(rawData);
+  ws1['!cols'] = [14,12,5,20,10,10,10].map(w => ({wch: w}));
+  XLSX.utils.book_append_sheet(wb, ws1, '生データ');
+
+  // シート2: 要素別集計
+  const allElems = [...new Set(sessions.flatMap(s => s.records.map(r => r.elem)))].sort();
+  const summaryData = [['要素作業', ...sessions.map(s => s.name + '\n平均(s)'), ...sessions.map(s => s.name + '\n回数')]];
+  allElems.forEach(elem => {
+    const row = [elem];
+    sessions.forEach(s => {
+      const recs = s.records.filter(r => r.elem === elem && r.dur !== null);
+      row.push(recs.length > 0 ? Math.round(recs.reduce((a,r)=>a+r.dur,0)/recs.length*10)/10 : '');
+    });
+    sessions.forEach(s => {
+      const recs = s.records.filter(r => r.elem === elem && r.dur !== null);
+      row.push(recs.length > 0 ? recs.length : '');
+    });
+    summaryData.push(row);
+  });
+  // 合計行
+  const totalRow = ['合計'];
+  sessions.forEach(s => {
+    totalRow.push(Math.round(s.records.filter(r=>r.dur!==null).reduce((a,r)=>a+r.dur,0)*10)/10);
+  });
+  sessions.forEach(() => totalRow.push(''));
+  summaryData.push(totalRow);
+
+  const ws2 = XLSX.utils.aoa_to_sheet(summaryData);
+  ws2['!cols'] = [20, ...sessions.map(()=>14), ...sessions.map(()=>10)].map(w => ({wch: w}));
+  XLSX.utils.book_append_sheet(wb, ws2, '要素別集計');
+
+  // シート3: 観測サマリー
+  const summaryRows = [['観測名', '日付', '要素数', '合計時間(s)', '平均時間(s)']];
+  sessions.forEach(s => {
+    const valid = s.records.filter(r => r.dur !== null);
+    const total = Math.round(valid.reduce((a,r)=>a+r.dur,0)*10)/10;
+    summaryRows.push([s.name, s.date, valid.length, total, valid.length ? Math.round(total/valid.length*10)/10 : '']);
+  });
+  const ws3 = XLSX.utils.aoa_to_sheet(summaryRows);
+  ws3['!cols'] = [18,12,10,14,14].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, ws3, '観測サマリー');
+
+  const date = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `作業分析_${date}.xlsx`);
+}
+
+// ===== JSON BACKUP =====
+
+// ===== LAYOUT SWITCHER =====
+let currentLayout = 'portrait';
+
+function setLayout(mode) {
+  currentLayout = mode;
+  const layout   = document.getElementById('main-layout');
+  const leftCol  = document.getElementById('left-col');
+  const resizer  = document.getElementById('col-resizer');
+  const midCol   = document.getElementById('mid-col');
+  const rightCol = document.getElementById('right-col');
+
+  document.getElementById('thumb-portrait').classList.toggle('active', mode === 'portrait');
+  document.getElementById('thumb-landscape').classList.toggle('active', mode === 'landscape');
+
+  // 横長→縦長への復元（ls-wrap が存在する場合）
+  const lsWrap = document.getElementById('ls-wrap');
+  if (lsWrap) {
+    // bottomRow から rightCol の子カードを rightCol に戻す
+    const bottomRow = document.getElementById('ls-bottom-row');
+    if (bottomRow) {
+      Array.from(bottomRow.children).forEach(c => rightCol.appendChild(c));
+    }
+    // ls-wrap を除去（leftCol・midCol は ls-wrap 内の topRow にいるので layout 直下に戻す）
+    // rightCol と resizer は layout に残ったままなので appendChild で末尾に並べ直す
+    layout.appendChild(leftCol);
+    layout.appendChild(resizer);
+    layout.appendChild(midCol);
+    layout.appendChild(rightCol);
+    lsWrap.remove();
+  }
+
+  // 既存の ls-left-wrap を解体（旧コード互換）
+  const existing = document.getElementById('ls-left-wrap');
+  if (existing) {
+    layout.insertBefore(leftCol, existing);
+    layout.insertBefore(resizer, midCol);
+    layout.insertBefore(rightCol, midCol.nextSibling);
+    existing.remove();
+  }
+
+  if (mode === 'portrait') {
+    // ── 縦長: left-col | resizer | mid-col | right-col (flex-row) ──
+    layout.style.cssText = 'display:flex; gap:0; height:100vh; padding:10px;';
+    leftCol.style.cssText  = '';
+    resizer.style.cssText  = '';
+    midCol.style.cssText   = '';
+    rightCol.style.cssText = '';
+
+    // カード内スタイルリセット
+    leftCol.querySelector('.video-card').style.cssText = '';
+    leftCol.querySelector('.video-wrap').style.cssText = '';
+    midCol.querySelectorAll(':scope > .card').forEach(c => c.style.cssText = '');
+    midCol.querySelectorAll(':scope > .card')[1].style.cssText = 'flex:1; display:flex; flex-direction:column; min-height:0;';
+
+    // コントロール速度行を元に戻す
+    const ctrl0 = leftCol.querySelectorAll('.controls')[0];
+    const ctrl1 = document.getElementById('controls-speed');
+    const sg = ctrl0.querySelector('.speed-group');
+    if (sg) { ctrl1.appendChild(sg); }
+    ctrl0.style.cssText = '';
+    ctrl1.style.display = '';
+
+  } else {
+    // ── 横長レイアウト構築 ──
+    //
+    //  lsWrap (flex-col)
+    //  ├── topRow  (flex-row)  : leftCol | ls-col-resizer | midCol
+    //  ├── ls-row-resizer
+    //  └── bottomRow (grid)   : rightCol の子カード群
+
+    const lsWrap = document.createElement('div');
+    lsWrap.id = 'ls-wrap';
+    lsWrap.style.cssText = 'display:flex; flex-direction:column; gap:0; flex:1; min-height:0; overflow:hidden;';
+
+    const topRow = document.createElement('div');
+    topRow.id = 'ls-top-row';
+    topRow.style.cssText = 'display:flex; gap:0; flex:1; min-height:100px; overflow:hidden;';
+
+    // 上下リサイザー
+    const rowResizer = document.createElement('div');
+    rowResizer.className = 'ls-row-resizer';
+    rowResizer.id = 'ls-row-resizer';
+    rowResizer.title = 'ドラッグして高さを変更';
+
+    const bottomRow = document.createElement('div');
+    bottomRow.id = 'ls-bottom-row';
+    bottomRow.style.cssText = 'display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; width:100%; flex:0 0 auto; overflow-y:auto; padding-top:0;';
+
+    // 左右リサイザー（横長モード用）
+    const colResizer = document.createElement('div');
+    colResizer.className = 'ls-col-resizer';
+    colResizer.id = 'ls-col-resizer';
+    colResizer.title = 'ドラッグして幅を変更';
+
+    // DOM組み立て — rightCol は DOM から切り離さず layout に残したまま非表示にする
+    layout.appendChild(lsWrap);
+    lsWrap.appendChild(topRow);
+    lsWrap.appendChild(rowResizer);
+    lsWrap.appendChild(bottomRow);
+
+    topRow.appendChild(leftCol);
+    topRow.appendChild(colResizer);
+    topRow.appendChild(midCol);
+
+    // resizer（縦長用）は幅ゼロで非表示
+    resizer.style.cssText = 'display:none; width:0; flex:none;';
+
+    // right-col の子カードを bottomRow に移す。rightCol 自体は layout に残したまま非表示
+    Array.from(rightCol.children).forEach(c => bottomRow.appendChild(c));
+    rightCol.style.cssText = 'display:none; width:0; flex:none;';
+
+    // leftCol スタイル
+    leftCol.style.cssText = 'flex:1; min-width:0; display:flex; flex-direction:column; min-height:0; overflow:hidden;';
+    leftCol.querySelector('.video-card').style.cssText = 'flex:1; display:flex; flex-direction:column; min-height:0;';
+    leftCol.querySelector('.video-wrap').style.cssText = 'flex:1; min-height:0;';
+
+    // midCol スタイル（残り幅をすべて埋める）
+    midCol.style.cssText = 'flex:1; min-width:0; display:flex; flex-direction:column; gap:10px; min-height:0; overflow:hidden;';
+    const midCards = midCol.querySelectorAll(':scope > .card');
+    midCards.forEach(c => c.style.minWidth = '0');
+    if (midCards[0]) midCards[0].style.cssText = 'flex-shrink:0;';
+    if (midCards[1]) midCards[1].style.cssText = 'flex:1; display:flex; flex-direction:column; min-height:0;';
+
+    // コントロール2行→1行統合
+    const ctrl0 = leftCol.querySelectorAll('.controls')[0];
+    const ctrl1 = document.getElementById('controls-speed');
+    if (ctrl1.querySelector('.speed-group')) {
+      ctrl0.style.cssText = 'display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:8px;';
+      Array.from(ctrl1.children).forEach(child => ctrl0.appendChild(child));
+      ctrl1.style.display = 'none';
+    }
+
+    // ── 左右リサイザー ドラッグ処理 ──
+    (function() {
+      let sX, sW;
+      colResizer.addEventListener('mousedown', e => {
+        sX = e.clientX;
+        sW = leftCol.getBoundingClientRect().width;
+        colResizer.classList.add('dragging');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        function onMove(e) {
+          const delta = e.clientX - sX;
+          const topW = topRow.getBoundingClientRect().width;
+          const newW = Math.max(200, Math.min(topW - 200 - 6, sW + delta));
+          leftCol.style.flex = '0 0 ' + newW + 'px';
+        }
+        function onUp() {
+          colResizer.classList.remove('dragging');
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+        }
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+    })();
+
+    // ── 上下リサイザー ドラッグ処理 ──
+    (function() {
+      let sY, sH;
+      rowResizer.addEventListener('mousedown', e => {
+        sY = e.clientY;
+        sH = topRow.getBoundingClientRect().height;
+        rowResizer.classList.add('dragging');
+        document.body.style.cursor = 'row-resize';
+        document.body.style.userSelect = 'none';
+        function onMove(e) {
+          const delta = e.clientY - sY;
+          const newH = Math.max(100, Math.min(window.innerHeight * 0.85, sH + delta));
+          topRow.style.flex = '0 0 ' + newH + 'px';
+          bottomRow.style.flex = '1';
+          if (pieChart) pieChart.resize();
+        }
+        function onUp() {
+          rowResizer.classList.remove('dragging');
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+        }
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+    })();
+  }
+
+  if (pieChart) setTimeout(() => pieChart.resize(), 50);
+}
+
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+  if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+  if (e.code === 'ArrowLeft')  { e.preventDefault(); stepFrame(-1); }
+  if (e.code === 'ArrowRight') { e.preventDefault(); stepFrame(1); }
+});
+
+// ===== ROW CLICK SEEK =====
+document.getElementById('records-tbody').addEventListener('click', e => {
+  // ボタンクリックは無視
+  if (e.target.closest('button')) return;
+  const tr = e.target.closest('tr');
+  if (!tr) return;
+  const rows = Array.from(document.querySelectorAll('#records-tbody tr'));
+  const idx = rows.indexOf(tr);
+  if (idx < 0) return;
+  const r = currentRecords[idx];
+  if (!r || isNaN(r.start)) return;
+  video.currentTime = r.start;
+  // ハイライト
+  rows.forEach(row => row.classList.remove('row-active'));
+  tr.classList.add('row-active');
+});
+
+// ===== COLUMN RESIZER =====
+(function() {
+  const resizer = document.getElementById('col-resizer');
+  const leftCol = document.querySelector('.left-col');
+  let startX, startW;
+
+  resizer.addEventListener('mousedown', e => {
+    startX = e.clientX;
+    startW = leftCol.getBoundingClientRect().width;
+    resizer.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    function onMove(e) {
+      const delta = e.clientX - startX;
+      const newW = Math.max(200, Math.min(window.innerWidth * 0.7, startW + delta));
+      leftCol.style.flex = '0 0 ' + newW + 'px';
+      midCol.style.flex = '1';
+    }
+    function onUp() {
+      resizer.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+})();
+
+// ===== UTILS =====
+function escH(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ===== INIT =====
+renderRecords();
+renderSessionList();
+updateAnalysis();
+</script>
+</body>
+</html>
