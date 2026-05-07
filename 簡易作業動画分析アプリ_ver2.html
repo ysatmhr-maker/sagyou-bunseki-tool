@@ -1217,7 +1217,8 @@ function exportExcel() {
   ws3['!cols'] = [18,12,10,14,14].map(w=>({wch:w}));
   XLSX.utils.book_append_sheet(wb, ws3, '観測サマリー');
 
-  const date = new Date().toISOString().slice(0,10);
+  const _d = new Date();
+  const date = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
   XLSX.writeFile(wb, `作業分析_${date}.xlsx`);
 }
 
